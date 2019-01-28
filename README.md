@@ -5,4 +5,4 @@ This is a simple project with a just sample technical documentation files author
 - [foponts](https://github.com/eduardtibet/fopoonts);
 - [docbook pretty playout](https://github.com/eduardtibet/docbook-pretty-playout);
 
-More README content to come soon!
+More README content coming soon!
