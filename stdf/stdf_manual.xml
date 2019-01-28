@@ -1,0 +1,885 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<article version="5.1" xml:lang="en" xmlns="http://docbook.org/ns/docbook"
+         xmlns:xlink="http://www.w3.org/1999/xlink"
+         xmlns:xila="http://www.w3.org/2001/XInclude/local-attributes"
+         xmlns:xi="http://www.w3.org/2001/XInclude"
+         xmlns:trans="http://docbook.org/ns/transclusion"
+         xmlns:svg="http://www.w3.org/2000/svg"
+         xmlns:m="http://www.w3.org/1998/Math/MathML"
+         xmlns:html="http://www.w3.org/1999/xhtml"
+         xmlns:db="http://docbook.org/ns/docbook">
+  <info>
+    <title>Segmented Telemetry Data Filter</title>
+
+    <subtitle>Administrator's manual</subtitle>
+
+    <author>
+      <personname><firstname>Eduard</firstname><surname>Tibet</surname></personname>
+    </author>
+
+    <pubdate>22.01.2019</pubdate>
+  </info>
+
+  <section xml:id="intro">
+    <title xml:id="intro_title">Introduction</title>
+
+    <section>
+      <title>Scope of this document</title>
+
+      <para xml:id="testpara">This is a complete administrator's manual of the
+      Segmented Telemetry Data Filter (STDF) software. It describes in a brief
+      what STDF is proposed for, its overall design, what each component is
+      indented for. Also this manual includes a full information about an
+      installation process and usage of STDF. The theory and principles of
+      data filtering, explanation of the Erlang language syntax (used for data
+      filtering) are completely out of scope of this manual.</para>
+    </section>
+
+    <section>
+      <title>Document structure</title>
+
+      <para>This document includes a following parts:</para>
+
+      <itemizedlist>
+        <listitem>
+          <para><xref endterm="intro_title" linkend="intro"/> - current
+          section.</para>
+        </listitem>
+
+        <listitem>
+          <para><xref endterm="description_title" linkend="description"/> - a
+          description of the software's overall design, features and
+          functionality.</para>
+        </listitem>
+
+        <listitem>
+          <para><xref endterm="installation_title" linkend="installation"/> -
+          the information about system requirements and installing the
+          software.</para>
+        </listitem>
+
+        <listitem>
+          <para><xref endterm="auth_rules_title" linkend="auth_rules"/> -
+          section describes, how to create and mastering filtering rules
+          needed to be deployed into the one of the software component.</para>
+        </listitem>
+
+        <listitem>
+          <para><xref endterm="using_data_title" linkend="using_data"/> -
+          section about customizing and fine tuning a final data.</para>
+        </listitem>
+
+        <listitem>
+          <para><xref endterm="trouble_title" linkend="trouble"/> - list of
+          possible troubles and ways to solve them.</para>
+        </listitem>
+      </itemizedlist>
+    </section>
+  </section>
+
+  <section xml:id="description">
+    <title xml:id="description_title">Description of the STDF</title>
+
+    <section>
+      <title>Brief description of the STDF</title>
+
+      <para>STDF is a data handling software designed to help in capturing
+      high speed telemetry data. The purpose of the STDF is to automatically
+      and linearly scale processing capacity for such data. The STDF segments
+      data into smaller chunks and sends them through a load balancer to
+      several servers that filter received data. This way it is possible
+      to:</para>
+
+      <itemizedlist>
+        <listitem>
+          <para>eliminate one high-powered processing unit working with a
+          data;</para>
+        </listitem>
+
+        <listitem>
+          <para>reduce the power of any unit, used in a processing;</para>
+        </listitem>
+
+        <listitem>
+          <para>deploy the system with a great flexibility and scalability,
+          based on various initial requirements and/or conditions.</para>
+        </listitem>
+      </itemizedlist>
+    </section>
+
+    <section>
+      <title>Overall design of STDF</title>
+
+      <para>The system contains of a several parts:</para>
+
+      <itemizedlist>
+        <listitem>
+          <para>coordinator component (node) - is used for smart managing of
+          the whole system;</para>
+        </listitem>
+
+        <listitem>
+          <para>loadbalancer component (node) - is used for receiving the raw
+          data from the external sources (i.e. sensors) and transfer it
+          further based on a coordinator directives;</para>
+        </listitem>
+
+        <listitem>
+          <para>filter component(s)/node(s) - are used to process the data
+          received from the loadbalancer. Processing is based on the current
+          workload. If it exceeds the maximum, defined by a coordinator, data
+          chunks automatically migrate to the other filter nodes, which free
+          resources are enough to manipulate the data. The number of a filter
+          components within installation can be variable and based on a
+          current performance needs.</para>
+        </listitem>
+      </itemizedlist>
+
+      <para>In the heart of the STDF is a proprietary protocol that was
+      developed by Teliota company. This protocol can be used between a
+      components to coordinate data manipulation, calculation on individual
+      filters, running on each server, and data migration between
+      filters.</para>
+
+      <para>The typical working process includes the following steps:</para>
+
+      <procedure>
+        <step>
+          <para>loadbalancer component receives all-raw data from an external
+          sources (i.e. sensors) and transmit it further to a filters based on
+          a coordinator's current workload rules and internal logic;</para>
+        </step>
+
+        <step>
+          <para>filter component receives an independent dataset from a
+          loadbalancer and asks a cluster's coordinator to supply a filtering
+          rules;</para>
+        </step>
+
+        <step>
+          <para>coordinator provides a rules to the filter and then the rules
+          are applied on-the-fly onto the incoming data, received from the
+          loadbalancer;</para>
+        </step>
+      </procedure>
+
+      <para>Each filtering component can talk to the coordinator component
+      about the data it is processing or wishes to process. The coordinator
+      component steers the loadbalancer component what data a loadbalancer
+      should provide to which filter node.</para>
+
+      <figure>
+        <title>Overall design of STDF</title>
+
+        <mediaobject>
+          <imageobject>
+            <imagedata contentdepth="100%" fileref="img/stdf_manual.svg"
+                       scalefit="1" width="100%"/>
+          </imageobject>
+        </mediaobject>
+      </figure>
+
+      <para>If a filter component gets overloaded by the data, its tasks can
+      be offloaded to another filter node. Due to the nature of the process,
+      the algorithm assumes that:</para>
+
+      <itemizedlist>
+        <listitem>
+          <para>a sufficient number of such redundant servers (filter modes)
+          exists in the pool as during an overload situation;</para>
+        </listitem>
+
+        <listitem>
+          <para>the offloaded data is similar to the original data and can be
+          filtered with a same rules.</para>
+        </listitem>
+      </itemizedlist>
+
+      <para>An offloaded filter node is, therefore, not "independent". It have
+      to process the same data and instructions as its peer up until the
+      moment the overload situation is resolved.</para>
+
+      <para>New processing (filter) nodes can be added into the processing
+      cluster on the fly by:</para>
+
+      <procedure>
+        <step>
+          <para>adding new server hardware;</para>
+        </step>
+
+        <step>
+          <para>installing the filter component software onto it;</para>
+        </step>
+
+        <step>
+          <para>configuring the coordinator server address.</para>
+        </step>
+      </procedure>
+
+      <para>The filter node will register itself to the coordinator and the
+      coordinator will instruct the loadbalancer to forward traffic to this
+      new node.</para>
+
+      <para>Telemetry data and filter operations are defined with a definition
+      file that in turn is written in a proprietary filter rule language. The
+      language defines in details:</para>
+
+      <itemizedlist>
+        <listitem>
+          <para>what the incoming data is stands for;</para>
+        </listitem>
+
+        <listitem>
+          <para>how the data may be aggregated and filtered out in case of
+          outliers or unwanted values are found.</para>
+        </listitem>
+      </itemizedlist>
+
+      <para>The coordinator reads the filter language files and runs them on
+      its own logic processing engine. This engine is connected to all the
+      filtering nodes, which receive processing instructions in the form of a
+      proprietary, compressed command protocol. The protocol is
+      bidirectional:</para>
+
+      <itemizedlist>
+        <listitem>
+          <para>filter nodes and the loadbalancer inform the coordinator of
+          the data they receive and their status.</para>
+        </listitem>
+
+        <listitem>
+          <para>coordinator instructs:</para>
+
+          <itemizedlist>
+            <listitem>
+              <para>loadbalancer - where to put the data;</para>
+            </listitem>
+
+            <listitem>
+              <para>filters - what is the data and how this data should be to
+              processed.</para>
+            </listitem>
+          </itemizedlist>
+        </listitem>
+      </itemizedlist>
+    </section>
+  </section>
+
+  <section xml:id="installation">
+    <title xml:id="installation_title">Installation of the software</title>
+
+    <section>
+      <title>System requirements</title>
+
+      <para>To successfully install and run STDF, your base hardware/software
+      installation have to be complied with the following requirements:</para>
+
+      <itemizedlist>
+        <listitem>
+          <para>Two (2) dedicated hardware servers for a coordinator and
+          loadbalancer components;</para>
+        </listitem>
+
+        <listitem>
+          <para>no other application software (i.e. MTA, DB, etc.), except of
+          operating system and system utilities should be installed on the
+          above servers;</para>
+        </listitem>
+
+        <listitem>
+          <para>required amount of a servers that will be used as a hosts for
+          a filtering components (nodes);</para>
+        </listitem>
+
+        <listitem>
+          <para>network connectivity with all sensors that gather information
+          for your application - your firewall rules should allow sensors to
+          access the STDF cluster (loadbalancer component);</para>
+        </listitem>
+
+        <listitem>
+          <para>network connectivity within all components of the STDF
+          installation and data receivers beyond the STDF deployment (DB or
+          third-party application servers);</para>
+        </listitem>
+
+        <listitem>
+          <para>any recent Linux distribution with a kernel 2.6.32 or
+          later;</para>
+        </listitem>
+
+        <listitem>
+          <para>standard (base) Linux utilities, including:</para>
+
+          <itemizedlist>
+            <listitem>
+              <para><parameter>tar</parameter> - utility to work with a
+              <filename>.tar</filename> files;</para>
+            </listitem>
+
+            <listitem>
+              <para><parameter>wget</parameter> - utility to get packages from
+              the distribution server;</para>
+            </listitem>
+
+            <listitem>
+              <para>any console text editors to edit a configuration files -
+              i.e. <parameter>vim</parameter>, <parameter>nano</parameter>,
+              etc.</para>
+            </listitem>
+          </itemizedlist>
+        </listitem>
+      </itemizedlist>
+    </section>
+
+    <section>
+      <title>User qualification</title>
+
+      <para>To install and maintain STDF administrator have to have:</para>
+
+      <itemizedlist>
+        <listitem>
+          <para>skills equals to those, that are enough to successfully pass
+          the LPIC-2 exam;</para>
+        </listitem>
+
+        <listitem>
+          <para>some knowledge of Erlang language syntax to write a filtering
+          rules.</para>
+        </listitem>
+
+        <listitem>
+          <para>read throughly a "STDF filtering rules language reference"
+          manual (supplied by Teliota separately).</para>
+        </listitem>
+      </itemizedlist>
+    </section>
+
+    <section>
+      <title>Installation process of a components</title>
+
+      <section>
+        <title>Getting a packages of a components</title>
+
+        <para>All packages are to be downloaded from a Teliota distribution
+        web server: <link
+        xlink:href="https://download.teliota.com">https://download.teliota.com</link>
+        .</para>
+      </section>
+
+      <section>
+        <title>Installation of the coordinator component</title>
+
+        <para>To install the coordinator component:</para>
+
+        <procedure>
+          <step>
+            <para>Go the the top level installation directory.</para>
+          </step>
+
+          <step>
+            <para>Make a directory for the coordinator's files:</para>
+
+            <screen>$ mkdir stdf_coordinator</screen>
+          </step>
+
+          <step>
+            <para>Go to the created directory:</para>
+
+            <screen>$ mv stdf_coordinator</screen>
+          </step>
+
+          <step>
+            <para>Download the package with a coordinator component:</para>
+
+            <screen>$ wget https://download.teliota.com/bin/stdf_coordinator.tar.bz2</screen>
+          </step>
+
+          <step>
+            <para>Untar the coordinator component files:</para>
+
+            <screen>$ tar -xjf stdf_coordinator.tar.bz2</screen>
+          </step>
+
+          <step>
+            <para>Open configuration file <filename>config.ini</filename> in
+            any text editor and setup the IP and port that coordinator
+            component should listen on:</para>
+
+            <screen>COORDINATOR_SERVER_LISTEN_IP=192.168.2.53
+COORDINATOR_SERVER_LISTEN_PORT=8860
+</screen>
+          </step>
+
+          <step>
+            <para>Go to the bin folder:</para>
+
+            <screen>$ cd ./bin</screen>
+          </step>
+
+          <step>
+            <para>Check if the file <parameter>stdf_coordinator.sh</parameter>
+            have an execution bit turned on.</para>
+          </step>
+
+          <step>
+            <para>Run the coordinator:</para>
+
+            <screen>$ ./stdf_coordinator.sh</screen>
+          </step>
+        </procedure>
+
+        <para>The coordinator is needed to be fed by a filtering rules. The
+        coordinator includes a separate language parsing and debugging tool
+        which checks a filter rule.<note>
+            <para>It is assumed that you have filtering rules already written.
+            If you haven't any rule written yet, first check the section <xref
+            endterm="auth_rules_title" linkend="auth_rules"/>.</para>
+          </note></para>
+
+        <para>To deploy a filtering rule:</para>
+
+        <procedure>
+          <step>
+            <para>Check the filtering rule:</para>
+
+            <screen>$ ./stdf_parser.sh -i [rulefile1]</screen>
+          </step>
+
+          <step>
+            <para>If there are any output message - read it carefully. This
+            message is also saved within a log file for the future
+            analysis.</para>
+          </step>
+
+          <step>
+            <para>Copy the rule file to a <filename>filter_rules</filename>
+            directory within the coordinator installation:</para>
+
+            <screen>$ cp [rulefile1] ../<filename>filter_rules</filename></screen>
+          </step>
+
+          <step>
+            <para>Open configuration file <filename>config.ini</filename> in
+            any text editor and add copied file into the coordinator component
+            setup:</para>
+
+            <screen>COORDINATOR_RULES_FILES=rulefile1,rulefile2</screen>
+          </step>
+
+          <step>
+            <para>Restart the coordinator component:</para>
+
+            <screen>$ ./stdf_coordinator.sh restart</screen>
+          </step>
+        </procedure>
+      </section>
+
+      <section>
+        <title>Installation of the loadbalancer component</title>
+
+        <para>To install the loadbalancer component:</para>
+
+        <procedure>
+          <step>
+            <para>Go the the top level installation directory.</para>
+          </step>
+
+          <step>
+            <para>Make a directory for the loadbalancer component
+            files:</para>
+
+            <screen>$ mkdir stdf_loadbalancer</screen>
+          </step>
+
+          <step>
+            <para>Go to the created directory:</para>
+
+            <screen>$ mv stdf_loadbalancer</screen>
+          </step>
+
+          <step>
+            <para>Download the package with a loadbalancer component:</para>
+
+            <screen>$ wget https://download.teliota.com/bin/stdf_loadbalancer.tar.bz2</screen>
+          </step>
+
+          <step>
+            <para>Untar the loadbalancer component files:</para>
+
+            <screen>$ tar -xjf stdf_loadbalancer.tar.bz2</screen>
+          </step>
+
+          <step>
+            <para>Open configuration file <filename>config.ini</filename> in
+            any text editor and point the loadbalancer to the coordinator
+            component IP address and port number:</para>
+
+            <screen>COORDINATOR_SERVER_IP=192.168.2.53
+COORDINATOR_SERVER_PORT=8860
+</screen>
+          </step>
+
+          <step>
+            <para>Go to the <filename>bin</filename> folder:</para>
+
+            <screen>$ cd ./bin</screen>
+          </step>
+
+          <step>
+            <para>Check if the file
+            <parameter>stdf_loadbalancer.sh</parameter> have an execution bit
+            turned on.</para>
+          </step>
+
+          <step>
+            <para>Run the coordinator component:</para>
+
+            <screen>$ ./stdf_loadbalancer.sh</screen>
+          </step>
+        </procedure>
+      </section>
+
+      <section>
+        <title>Installation of a filtering component</title>
+
+        <para>To install the filtering component:</para>
+
+        <procedure>
+          <step>
+            <para>Go the the top level installation directory.</para>
+          </step>
+
+          <step>
+            <para>Make a directory for the filtering component files:</para>
+
+            <screen>$ mkdir stdf_node</screen>
+          </step>
+
+          <step>
+            <para>Go to the created directory:</para>
+
+            <screen>$ mv stdf_node</screen>
+          </step>
+
+          <step>
+            <para>Download the package with a filtering component:</para>
+
+            <screen>$ wget https://download.teliota.com/bin/stdf_node.tar.bz2</screen>
+          </step>
+
+          <step>
+            <para>Untar the filtering component files:</para>
+
+            <screen>$ tar -xjf stdf_node.tar.bz2</screen>
+          </step>
+
+          <step>
+            <para>Open configuration file <filename>config.ini</filename> in
+            any text editor and point the filtering component to the
+            coordinator component IP address and port number:</para>
+
+            <screen>COORDINATOR_SERVER_IP=192.168.2.53
+COORDINATOR_SERVER_PORT=8860
+</screen>
+          </step>
+
+          <step>
+            <para>Go to the bin folder:</para>
+
+            <screen>$ cd ./bin</screen>
+          </step>
+
+          <step>
+            <para>Check if the file <parameter>stdf_node.sh</parameter> have
+            an execution bit turned on.</para>
+          </step>
+
+          <step>
+            <para>Run the filtering component:</para>
+
+            <screen>$ ./stdf_node.sh</screen>
+          </step>
+
+          <step>
+            <para>Repeat an above actions for all filter components are to be
+            installed.</para>
+          </step>
+
+          <step>
+            <para>Start feeding data into the data interface of the
+            loadbalancer component.</para>
+          </step>
+        </procedure>
+      </section>
+    </section>
+  </section>
+
+  <section xml:id="auth_rules">
+    <title xml:id="auth_rules_title">Authoring filtering rules</title>
+
+    <note>
+      <para>This section describes the filtering rules structure only in
+      brief. For a detailed information look at the "STDF filtering rules
+      language reference" manual.</para>
+    </note>
+
+    <para>Filtering rules are defined with a filtering language that uses the
+    Erlang language syntax as a basis.</para>
+
+    <para>Each filtering rule includes three elements (so called
+    "definitions"):</para>
+
+    <itemizedlist>
+      <listitem>
+        <para>data definition - describes the nature of the data to be
+        filtered, including the pattern how the incoming data can be
+        recognized (e.g. port, input url, data header); the data definition
+        assigns an identifier to the dataset so that the data correlation and
+        filter rules can refer to it;</para>
+      </listitem>
+
+      <listitem>
+        <para>correlation definition - describes how this data depends on
+        itself or some other identified dataset;</para>
+      </listitem>
+
+      <listitem>
+        <para>filter definition - describes what actions are to be taken for
+        the data, when it arrives.</para>
+      </listitem>
+    </itemizedlist>
+  </section>
+
+  <section xml:id="using_data">
+    <title xml:id="using_data_title">Using and verifying filtered data</title>
+
+    <para>The filtering cluster appoints one of its nodes automatically as a
+    forwarder, based on the load of the servers. The forwarder collects the
+    data from each filtering node, combines it into one stream, and sends it
+    to whatever server is designated as the final receiver
+    (destination).</para>
+
+    <para><important>
+        <para>The filtering components (nodes) don't store any data - they
+        only perform filtering. You have to define and configure the storage
+        server beyond the STDF deployment that will perform any and all
+        database processing. A connection to a designated DB server is
+        configured within a coordinator component configuration file
+        <filename>config.ini</filename>.</para>
+      </important></para>
+
+    <para>The forwarder can optionally inject additional data headers and
+    trailers into the initial data block for easier recognition of its nature
+    - source transmitter/generator. The trailer may contain a CRC for checking
+    data integrity. The algorithm for the CRC is shown below:</para>
+
+    <screen language="c">def crc16(self, buff, crc = 0, poly = 0xa001):
+    l = len(buff)
+    i = 0
+    while i &amp;lt; l:
+        ch = buff[i]
+            uc = 0
+            while uc &amp;lt; 8:
+            if (crc &amp;amp; 1) ^ (ch &amp;amp; 1):
+                crc = (crc &amp;gt;&amp;gt; 1) ^ poly
+            else:
+                crc &amp;gt;&amp;gt;= 1
+            ch &amp;gt;&amp;gt;= 1
+            uc += 1
+        i += 1
+    return crc
+        
+crc_byte_high = (crc &amp;gt;&amp;gt; 8)
+crc_byte_low = (crc &amp;amp; 0xFF)</screen>
+  </section>
+
+  <section xml:id="trouble">
+    <title xml:id="trouble_title">Troubleshooting
+    <remark>(FIXME)</remark></title>
+
+    <section>
+      <title>Problem: no connection from a nodes to coordinator</title>
+
+      <para>How to fix it:</para>
+
+      <itemizedlist>
+        <listitem>
+          <para>check configuration of node -&gt; is coordinator node IP
+          correct?</para>
+        </listitem>
+
+        <listitem>
+          <para>check coordinator node firewall -&gt; is port open?</para>
+        </listitem>
+
+        <listitem>
+          <para>check coordinator node software -&gt; is it running?</para>
+        </listitem>
+      </itemizedlist>
+    </section>
+
+    <section>
+      <title>Problem: nodes don't receive filtering rules</title>
+
+      <para>How to fix it:</para>
+
+      <itemizedlist>
+        <listitem>
+          <para>check connection to coordinator node (as above)</para>
+        </listitem>
+
+        <listitem>
+          <para>are there any errors in filtering language -&gt; check
+          coordinator logs for errors</para>
+        </listitem>
+
+        <listitem>
+          <para>are there any errors in network -&gt; check coordinator logs
+          for errors, check node firewall</para>
+        </listitem>
+      </itemizedlist>
+    </section>
+
+    <section>
+      <title>Problem: nodes don't receive data</title>
+
+      <para>How to fix it:</para>
+
+      <itemizedlist>
+        <listitem>
+          <para>is load balancer running -&gt; check for errors in load
+          balancer logs</para>
+        </listitem>
+
+        <listitem>
+          <para>are ports open? -&gt; check node firewall</para>
+        </listitem>
+
+        <listitem>
+          <para>is there actual data -&gt; check load balancer stats of
+          received data</para>
+        </listitem>
+      </itemizedlist>
+    </section>
+
+    <section>
+      <title>Problem: load balancer does not receive data</title>
+
+      <para>How to fix it:</para>
+
+      <itemizedlist>
+        <listitem>
+          <para>is load balancer running -&gt; check for errors in load
+          balancer logs</para>
+        </listitem>
+
+        <listitem>
+          <para>are ports open? -&gt; check load balancer firewall</para>
+        </listitem>
+      </itemizedlist>
+    </section>
+
+    <section>
+      <title>Problem: Filters produce incorrect results</title>
+
+      <para>How to fix it:</para>
+
+      <itemizedlist>
+        <listitem>
+          <para>run nodes with higher debug level -&gt; start with
+          .<filename>/stdf_node.sh -vvv</filename> -&gt; check logs</para>
+        </listitem>
+
+        <listitem>
+          <para>check filter language parser and actual output -&gt; input
+          language into a parser <filename>./stdf_parser.sh -i
+          [rulefile1]</filename></para>
+        </listitem>
+      </itemizedlist>
+    </section>
+  </section>
+
+  <appendix>
+    <title>Technologies behind this sample document</title>
+
+    <para>The source files of this document:</para>
+
+    <itemizedlist>
+      <listitem>
+        <para>were completely written in <link
+        xlink:href="https://docbook.org/xml/5.1/">DocBook/XML 5.1</link>
+        format which is <link
+        xlink:href="https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=docbook">OASIS
+        Standard</link>;</para>
+      </listitem>
+
+      <listitem>
+        <para>were WYSYWYM-authored by using of <link
+        xlink:href="http://www.xmlmind.com/xmleditor/">XMLmind XML
+        Editor</link> version 7.3 by <link
+        xlink:href="http://www.xmlmind.com">XMLmind Software</link> installed
+        on author's desktop running <link
+        xlink:href="https://www.debian.org/">Debian GNU/Linux 9.7
+        (stretch)</link>. Also author was using <link
+        xlink:href="http://dia-installer.de/">Dia Diagram Editor</link> for a
+        diagrams.</para>
+      </listitem>
+
+      <listitem>
+        <para>are freely available at Github as a <link
+        xlink:href="https://github.com/eduardtibet/docbook-samples">docbook-samples
+        project</link>;</para>
+      </listitem>
+
+      <listitem>
+        <para>are distributed under Creative Commons License - for details see
+        <xref endterm="license_title" linkend="license"/>.</para>
+      </listitem>
+    </itemizedlist>
+
+    <para>To produce <filename>.fo</filename> file of this document the
+    following software were used:</para>
+
+    <itemizedlist>
+      <listitem>
+        <para>The local copy of <link
+        xlink:href="http://docbook.sourceforge.net/release/xsl/">DocBook XSL
+        Stylesheets v. 1.79.1</link> was used in conjunction with the</para>
+      </listitem>
+
+      <listitem>
+        <para>Author's customization layer of the above stylesheets that is
+        now a <link
+        xlink:href="https://github.com/eduardtibet/docbook-pretty-playout">docbook
+        pretty playout</link> project, freely available at Github.</para>
+      </listitem>
+
+      <listitem>
+        <para><filename>xsltproc</filename> as an engine to produce
+        <filename>.fo</filename> file from the DocBook source
+        <filename>.xml</filename> file (<filename>xsltproc</filename> compiled
+        against <filename>libxml</filename> 20904,
+        <filename>libxslt</filename> 10129 and <filename>libexslt</filename>
+        817).</para>
+      </listitem>
+    </itemizedlist>
+
+    <para>To get the result <filename>.pdf</filename> file from a
+    <filename>.fo</filename> file author used <link
+    xlink:href="http://xmlgraphics.apache.org/fop/">Apache FOP 2.3</link>
+    engine with a <link
+    xlink:href="https://github.com/eduardtibet/foponts">foponts
+    project</link>, created and maintained by the author of this
+    document.</para>
+  </appendix>
+
+  <appendix xml:id="license">
+    <title xml:id="license_title">License</title>
+
+    <para>This work is licensed under a <link
+    xlink:href="https://creativecommons.org/licenses/by-nc-sa/4.0/">Creative
+    Commons Attribution-NonCommercial-ShareAlike 4.0 International
+    License</link>.</para>
+  </appendix>
+</article>
