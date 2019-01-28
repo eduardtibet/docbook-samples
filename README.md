@@ -6,3 +6,7 @@ This is a simple project with a just sample technical documentation files author
 - [docbook pretty playout](https://github.com/eduardtibet/docbook-pretty-playout);
 
 More README content coming soon!
+
+## License
+
+This project is distributed under Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License - see [LICENSE](LICENSE)
